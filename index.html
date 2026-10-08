@@ -1,0 +1,658 @@
+
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>کاتالوگ کافه معدن</title>
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Page Flip -->
+    <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #ece7df;
+            font-family: Tahoma, sans-serif;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wrapper {
+            position: relative;
+            width: min(95vw, 1400px);
+            height: min(92vh, 900px);
+        }
+
+        #book {
+            width: 100%;
+            height: 100%;
+            direction: ltr;
+        }
+
+        .page {
+            width: 100%;
+            height: 100%;
+            background: white;
+            overflow: hidden;
+        }
+
+        .page.fake {
+            background: transparent !important;
+            box-shadow: none !important;
+            pointer-events: none !important;
+        }
+
+        .page img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 60px;
+            height: 60px;
+            border: none;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+            cursor: pointer;
+            z-index: 9999;
+            font-size: 30px;
+        }
+
+        .nav:hover {
+            transform: translateY(-50%) scale(1.08);
+        }
+
+        .prev {
+            left: -70px;
+        }
+
+        .next {
+            right: -70px;
+        }
+
+        .loader {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+            padding: 30px;
+
+            background: #ece7df;
+            text-align: center;
+        }
+
+        .loader-title {
+            font-size: 22px;
+            color: #222;
+            margin-bottom: 15px;
+        }
+
+        .loader-error {
+            max-width: 800px;
+            padding: 20px;
+            border-radius: 12px;
+            background: white;
+            color: #b42318;
+            font-size: 15px;
+            line-height: 2;
+            direction: rtl;
+        }
+
+        .loader-url {
+            margin-top: 10px;
+            color: #555;
+            font-size: 13px;
+            direction: ltr;
+            word-break: break-all;
+        }
+
+        @media (max-width: 768px) {
+
+            .wrapper {
+                width: 100vw;
+                height: 100vh;
+            }
+
+            .nav {
+                width: 48px;
+                height: 48px;
+                font-size: 22px;
+            }
+
+            .prev {
+                left: 8px;
+            }
+
+            .next {
+                right: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="loader" id="loader">
+
+        <div class="loader-title" id="loaderTitle">
+            در حال بارگذاری کاتالوگ...
+        </div>
+
+        <div
+            id="loaderError"
+            class="loader-error"
+            style="display:none;"
+        ></div>
+
+    </div>
+
+
+    <div class="wrapper">
+
+        <button class="nav prev" id="prevBtn">
+            ❮
+        </button>
+
+        <div id="book"></div>
+
+        <button class="nav next" id="nextBtn">
+            ❯
+        </button>
+
+    </div>
+
+
+    <script>
+
+        /*
+        |--------------------------------------------------------------------------
+        | بررسی کتابخانه‌ها
+        |--------------------------------------------------------------------------
+        */
+
+        window.addEventListener("load", async () => {
+
+            try {
+
+                // PDF.js
+                if (typeof pdfjsLib === "undefined") {
+                    throw new Error(
+                        "PDF.js در مرورگر لود نشده است."
+                    );
+                }
+
+                // PageFlip
+                if (
+                    typeof St === "undefined" ||
+                    typeof St.PageFlip === "undefined"
+                ) {
+                    throw new Error(
+                        "کتابخانه PageFlip در مرورگر لود نشده است."
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | PDF Worker
+                |--------------------------------------------------------------------------
+                */
+
+                pdfjsLib.GlobalWorkerOptions.workerSrc =
+                    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | مسیر PDF
+                |--------------------------------------------------------------------------
+                */
+
+                const pdfUrl =
+                    new URL(
+                        "ALABASTER.pdf",
+                        window.location.href
+                    ).href;
+
+
+                console.log(
+                    "PDF URL:",
+                    pdfUrl
+                );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | تست فایل
+                |--------------------------------------------------------------------------
+                */
+
+                const response =
+                    await fetch(pdfUrl, {
+                        cache: "no-store"
+                    });
+
+
+                console.log(
+                    "PDF HTTP Status:",
+                    response.status
+                );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        `فایل ALABASTER.pdf پیدا نشد. وضعیت سرور: ${response.status}`
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | دریافت PDF
+                |--------------------------------------------------------------------------
+                */
+
+                const pdfBuffer =
+                    await response.arrayBuffer();
+
+
+                console.log(
+                    "PDF دریافت شد:",
+                    pdfBuffer.byteLength,
+                    "bytes"
+                );
+
+
+                if (pdfBuffer.byteLength === 0) {
+
+                    throw new Error(
+                        "فایل PDF خالی است."
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | باز کردن PDF
+                |--------------------------------------------------------------------------
+                */
+
+                const pdf =
+                    await pdfjsLib
+                        .getDocument({
+                            data: pdfBuffer
+                        })
+                        .promise;
+
+
+                console.log(
+                    "PDF Loaded!",
+                    pdf.numPages,
+                    "pages"
+                );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | ساخت صفحات
+                |--------------------------------------------------------------------------
+                */
+
+                const book =
+                    document.getElementById("book");
+
+
+                const pages = [];
+
+
+                const scale =
+                    window.devicePixelRatio > 1.5
+                        ? 2
+                        : 1.5;
+
+
+                for (
+                    let i = 1;
+                    i <= pdf.numPages;
+                    i++
+                ) {
+
+                    console.log(
+                        `Rendering page ${i}/${pdf.numPages}`
+                    );
+
+
+                    const pdfPage =
+                        await pdf.getPage(i);
+
+
+                    const viewport =
+                        pdfPage.getViewport({
+                            scale: scale
+                        });
+
+
+                    const canvas =
+                        document.createElement("canvas");
+
+
+                    canvas.width =
+                        viewport.width;
+
+                    canvas.height =
+                        viewport.height;
+
+
+                    const context =
+                        canvas.getContext("2d");
+
+
+                    await pdfPage.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+
+
+                    const image =
+                        document.createElement("img");
+
+
+                    image.src =
+                        canvas.toDataURL(
+                            "image/jpeg",
+                            0.95
+                        );
+
+
+                    const page =
+                        document.createElement("div");
+
+
+                    page.className =
+                        "page";
+
+
+                    page.appendChild(
+                        image
+                    );
+
+
+                    book.appendChild(
+                        page
+                    );
+
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | اگر صفحات کم بودند
+                |--------------------------------------------------------------------------
+                */
+
+                if (pdf.numPages === 0) {
+
+                    throw new Error(
+                        "PDF هیچ صفحه‌ای ندارد."
+                    );
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | صفحه Fake اول
+                |--------------------------------------------------------------------------
+                */
+
+                const firstFake =
+                    document.createElement("div");
+
+
+                firstFake.className =
+                    "page fake";
+
+
+                book.insertBefore(
+                    firstFake,
+                    book.firstChild
+                );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | صفحه Fake آخر
+                |--------------------------------------------------------------------------
+                */
+
+                const allPages =
+                    book.querySelectorAll(
+                        ".page"
+                    );
+
+
+                if (
+                    allPages.length % 2 !== 0
+                ) {
+
+                    const lastFake =
+                        document.createElement("div");
+
+
+                    lastFake.className =
+                        "page fake";
+
+
+                    book.appendChild(
+                        lastFake
+                    );
+
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | ساخت FlipBook
+                |--------------------------------------------------------------------------
+                */
+
+                const pageElements =
+                    [
+                        ...book.querySelectorAll(
+                            ".page"
+                        )
+                    ];
+
+
+                const flipBook =
+                    new St.PageFlip(
+                        book,
+                        {
+
+                            width: 500,
+                            height: 700,
+
+                            size: "stretch",
+
+                            minWidth: 280,
+                            maxWidth: 1000,
+
+                            minHeight: 400,
+                            maxHeight: 1400,
+
+                            autoSize: true,
+
+                            usePortrait: true,
+
+                            showCover: false,
+
+                            flippingTime: 1000,
+
+                            maxShadowOpacity: .35,
+
+                            drawShadow: true,
+
+                            mobileScrollSupport: true,
+
+                            showPageCorners: true,
+
+                            startZIndex: 10
+                        }
+                    );
+
+
+                flipBook.loadFromHTML(
+                    pageElements
+                );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | دکمه‌ها
+                |--------------------------------------------------------------------------
+                */
+
+                document
+                    .getElementById("nextBtn")
+                    .addEventListener(
+                        "click",
+                        () => {
+                            flipBook.flipNext();
+                        }
+                    );
+
+
+                document
+                    .getElementById("prevBtn")
+                    .addEventListener(
+                        "click",
+                        () => {
+                            flipBook.flipPrev();
+                        }
+                    );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | کیبورد
+                |--------------------------------------------------------------------------
+                */
+
+                document.addEventListener(
+                    "keydown",
+                    (event) => {
+
+                        if (
+                            event.key === "ArrowRight"
+                        ) {
+                            flipBook.flipNext();
+                        }
+
+                        if (
+                            event.key === "ArrowLeft"
+                        ) {
+                            flipBook.flipPrev();
+                        }
+
+                    }
+                );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | مخفی کردن Loader
+                |--------------------------------------------------------------------------
+                */
+
+                document
+                    .getElementById("loader")
+                    .style.display = "none";
+
+
+                console.log(
+                    "CATALOG READY ✅"
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "CATALOG ERROR:",
+                    error
+                );
+
+
+                const loaderTitle =
+                    document.getElementById(
+                        "loaderTitle"
+                    );
+
+
+                const loaderError =
+                    document.getElementById(
+                        "loaderError"
+                    );
+
+
+                loaderTitle.textContent =
+                    "خطا در بارگذاری کاتالوگ";
+
+
+                loaderError.style.display =
+                    "block";
+
+
+                loaderError.innerHTML = `
+                    <strong>خطای واقعی:</strong>
+                    <br>
+                    ${error.message}
+
+                    <div class="loader-url">
+                        PDF URL:
+                        <br>
+                        ${new URL(
+                            "ALABASTER.pdf",
+                            window.location.href
+                        ).href}
+                    </div>
+                `;
+
+            }
+
+        });
+
+    </script>
+
+</body>
+</html>
